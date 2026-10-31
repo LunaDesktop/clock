@@ -5,7 +5,7 @@
 //! i nie wymagamy konta ani sieci.
 
 pub mod app;
-pub mod holidays;
+pub use libluna_core::holidays;
 pub mod prefs;
 pub mod store;
 pub mod time;

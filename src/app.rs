@@ -562,9 +562,11 @@ impl App {
 
     /// Stan minutnika do zapisania (tylko gdy coś odlicza albo czeka).
     pub fn timer_activity(&self) -> Option<TimerActivity> {
-        let active = self.timer.running
-            || self.timer.finished
-            || self.timer.remaining() < self.timer.duration;
+        if self.timer.finished {
+            // Zakończony minutnik nie jest już widgetem — jego ślad zostaje w powiadomieniach.
+            return None;
+        }
+        let active = self.timer.running || self.timer.remaining() < self.timer.duration;
         if !active {
             return None;
         }
@@ -1289,6 +1291,62 @@ mod tests {
         for (index, tab) in Tab::ALL.iter().enumerate() {
             assert_eq!(Tab::from_index(index), *tab);
             assert_eq!(tab.index(), index);
+            assert_eq!(Tab::from_name(tab.title_key()), Some(*tab));
         }
+        assert_eq!(Tab::from_name("timer"), Some(Tab::Timer));
+        assert_eq!(Tab::from_name("nonsense"), None);
+    }
+
+    #[test]
+    fn restores_a_running_timer() {
+        let now = libluna_core::clock_state::now_unix();
+        let activity = ClockActivity {
+            pid: None,
+            updated_unix: now,
+            timer: Some(TimerActivity {
+                total_secs: 300,
+                running: true,
+                end_unix: now + 120,
+                remaining_secs: 0,
+                finished: false,
+            }),
+            stopwatch: None,
+        };
+        let mut store = EventStore::from_text("", None);
+        store.set_path(None);
+        let app = App::new(Prefs::default(), store, None, Some(activity));
+        assert!(app.timer.running);
+        let remaining = app.timer.remaining().as_secs();
+        assert!((119..=120).contains(&remaining));
+    }
+
+    #[test]
+    fn restores_a_stopwatch() {
+        let now = libluna_core::clock_state::now_unix();
+        let activity = ClockActivity {
+            pid: None,
+            updated_unix: now,
+            timer: None,
+            stopwatch: Some(StopwatchActivity {
+                elapsed_millis: 5_000,
+                running: false,
+                updated_unix: now,
+                laps: vec![1_000, 4_000],
+            }),
+        };
+        let mut store = EventStore::from_text("", None);
+        store.set_path(None);
+        let app = App::new(Prefs::default(), store, None, Some(activity));
+        assert_eq!(app.stopwatch.elapsed(), Duration::from_secs(5));
+        assert_eq!(app.stopwatch.laps.len(), 2);
+    }
+
+    #[test]
+    fn fresh_timer_and_stopwatch_do_not_create_activity() {
+        let mut store = EventStore::from_text("", None);
+        store.set_path(None);
+        let app = App::new(Prefs::default(), store, None, None);
+        assert!(app.timer_activity().is_none());
+        assert!(app.stopwatch_activity().is_none());
     }
 }

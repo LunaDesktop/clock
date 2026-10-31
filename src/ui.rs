@@ -5,6 +5,7 @@ use std::time::Duration;
 use libluna_core::style::weight;
 use libluna_core::{
     ButtonState, Color, Event, Insets, KeyEvent, Point, PointerButton, Rect, Size, Theme,
+    WindowEvent,
 };
 use libluna_render::{Scene, TextEngine};
 use libluna_widgets::{
@@ -984,16 +985,22 @@ fn paint_day_details(app: &mut App, ctx: &mut PaintCtx, card: Rect) {
                     theme.colors.shade.scale_alpha(0.8),
                 );
             }
+            let time_text = match event.start_minute {
+                Some(_) => event.start_label(app.prefs.use_24h),
+                None => libluna_i18n::tr("All day"),
+            };
+            let time_width = ctx.measure(&time_text, theme.typography.caption.size, weight::MEDIUM);
+            let title_x = row.x() + 8.0 + time_width.max(28.0) + 12.0;
             ctx.label_left(
                 row.x() + 8.0,
                 row.y() + row.height() * 0.34,
-                &event.start_label(app.prefs.use_24h),
+                &time_text,
                 theme.typography.caption.size,
                 weight::MEDIUM,
                 theme.colors.accent,
             );
             ctx.label_left(
-                row.x() + 66.0,
+                title_x,
                 row.y() + row.height() * 0.34,
                 &event.title,
                 theme.typography.body.size,
@@ -1003,7 +1010,7 @@ fn paint_day_details(app: &mut App, ctx: &mut PaintCtx, card: Rect) {
             if !event.note.is_empty() {
                 caption(
                     ctx,
-                    row.x() + 66.0,
+                    title_x,
                     row.y() + row.height() * 0.74,
                     &event.note,
                     theme.colors.dim_text,
@@ -1900,6 +1907,7 @@ pub fn handle_events(
             }
             Event::Text(input) => insert_text(app, input),
             Event::Paste(input) => insert_text(app, input),
+            Event::Window(WindowEvent::CloseRequested) => app.pending_close = true,
             _ => {}
         }
     }
@@ -2148,18 +2156,37 @@ fn apply_action(app: &mut App, action: Action) {
         Action::Tab(tab) => app.set_tab(tab),
         Action::AddZone => app.open_picker(PickerKind::Zone),
         Action::RemoveZone(index) => app.remove_zone(index),
-        Action::TimerUnit(unit, delta) => app.timer.adjust(unit, delta),
+        Action::TimerUnit(unit, delta) => {
+            app.timer.adjust(unit, delta);
+            app.persist_activity(true);
+        }
         Action::TimerPreset(minutes) => {
             app.timer
                 .set_duration(Duration::from_secs(minutes as u64 * 60));
             app.prefs.timer_minutes = minutes;
             app.prefs.save();
+            app.persist_activity(true);
         }
-        Action::TimerToggle => app.timer.start_pause(),
-        Action::TimerReset => app.timer.reset(),
-        Action::WatchToggle => app.stopwatch.start_pause(),
-        Action::WatchLap => app.stopwatch.lap(),
-        Action::WatchReset => app.stopwatch.reset(),
+        Action::TimerToggle => {
+            app.timer.start_pause();
+            app.persist_activity(true);
+        }
+        Action::TimerReset => {
+            app.timer.reset();
+            app.persist_activity(true);
+        }
+        Action::WatchToggle => {
+            app.stopwatch.start_pause();
+            app.persist_activity(true);
+        }
+        Action::WatchLap => {
+            app.stopwatch.lap();
+            app.persist_activity(true);
+        }
+        Action::WatchReset => {
+            app.stopwatch.reset();
+            app.persist_activity(true);
+        }
         Action::MonthPrev => app.month_prev(),
         Action::MonthNext => app.month_next(),
         Action::Today => app.go_today(),
