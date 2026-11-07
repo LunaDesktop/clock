@@ -1,0 +1,15 @@
+[Desktop Entry]
+Type=Application
+Name=Clock
+Name[pl]=Zegar
+Name[de]=Uhr
+Comment=Clock, timer, stopwatch and a private calendar
+Comment[pl]=Zegar, minutnik, stoper i prywatny kalendarz
+Comment[de]=Uhr, Timer, Stoppuhr und ein privater Kalender
+Exec=luna-clock
+Icon=x-office-calendar
+Terminal=false
+Categories=Utility;Clock;Calendar;
+Keywords=clock;timer;stopwatch;calendar;time;zone;alarm;holidays;
+Keywords[pl]=zegar;minutnik;stoper;kalendarz;czas;strefa;święta;
+Keywords[de]=Uhr;Timer;Stoppuhr;Kalender;Zeit;Zeitzone;Feiertage;
