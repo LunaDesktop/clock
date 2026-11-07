@@ -217,9 +217,271 @@ pub fn weekday_short_key(weekday: u32) -> &'static str {
     }
 }
 
+/// Czy pokazywać sam dzień i miesiąc, czy też rok.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DateFields {
+    /// Dzień i miesiąc (bez roku).
+    DayMonth,
+    /// Dzień, miesiąc i rok.
+    #[default]
+    DayMonthYear,
+}
+
+/// Czy miesiąc zapisywać cyframi, czy nazwą.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DateStyle {
+    /// `10.10.2026`
+    #[default]
+    Numeric,
+    /// `10 października 2026`
+    Words,
+}
+
+/// Kolejność dnia i miesiąca.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DateOrder {
+    /// Dzień → miesiąc (`10.10.2026`).
+    #[default]
+    DayFirst,
+    /// Miesiąc → dzień, jak w zapisie angielskim (`10/31/2026`).
+    MonthFirst,
+}
+
+/// Separator w formacie cyfrowym.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DateSeparator {
+    #[default]
+    Dot,
+    Dash,
+    Slash,
+}
+
+impl DateSeparator {
+    pub fn ch(self) -> char {
+        match self {
+            DateSeparator::Dot => '.',
+            DateSeparator::Dash => '-',
+            DateSeparator::Slash => '/',
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            DateSeparator::Dot => ".",
+            DateSeparator::Dash => "-",
+            DateSeparator::Slash => "/",
+        }
+    }
+
+    pub fn next(self) -> Self {
+        match self {
+            DateSeparator::Dot => DateSeparator::Dash,
+            DateSeparator::Dash => DateSeparator::Slash,
+            DateSeparator::Slash => DateSeparator::Dot,
+        }
+    }
+
+    pub fn key(self) -> &'static str {
+        match self {
+            DateSeparator::Dot => "dot",
+            DateSeparator::Dash => "dash",
+            DateSeparator::Slash => "slash",
+        }
+    }
+
+    pub fn from_key(value: &str) -> Option<Self> {
+        match value.trim() {
+            "dot" => Some(DateSeparator::Dot),
+            "dash" => Some(DateSeparator::Dash),
+            "slash" => Some(DateSeparator::Slash),
+            _ => None,
+        }
+    }
+}
+
+impl DateFields {
+    pub fn label(self) -> String {
+        match self {
+            DateFields::DayMonth => libluna_i18n::tr("Day and month"),
+            DateFields::DayMonthYear => libluna_i18n::tr("Day, month and year"),
+        }
+    }
+
+    pub fn next(self) -> Self {
+        match self {
+            DateFields::DayMonth => DateFields::DayMonthYear,
+            DateFields::DayMonthYear => DateFields::DayMonth,
+        }
+    }
+
+    pub fn key(self) -> &'static str {
+        match self {
+            DateFields::DayMonth => "day_month",
+            DateFields::DayMonthYear => "day_month_year",
+        }
+    }
+
+    pub fn from_key(value: &str) -> Option<Self> {
+        match value.trim() {
+            "day_month" => Some(DateFields::DayMonth),
+            "day_month_year" => Some(DateFields::DayMonthYear),
+            _ => None,
+        }
+    }
+}
+
+impl DateStyle {
+    pub fn label(self) -> String {
+        match self {
+            DateStyle::Numeric => libluna_i18n::tr("Digits"),
+            DateStyle::Words => libluna_i18n::tr("Words"),
+        }
+    }
+
+    pub fn next(self) -> Self {
+        match self {
+            DateStyle::Numeric => DateStyle::Words,
+            DateStyle::Words => DateStyle::Numeric,
+        }
+    }
+
+    pub fn key(self) -> &'static str {
+        match self {
+            DateStyle::Numeric => "numeric",
+            DateStyle::Words => "words",
+        }
+    }
+
+    pub fn from_key(value: &str) -> Option<Self> {
+        match value.trim() {
+            "numeric" => Some(DateStyle::Numeric),
+            "words" => Some(DateStyle::Words),
+            _ => None,
+        }
+    }
+}
+
+impl DateOrder {
+    pub fn label(self) -> String {
+        match self {
+            DateOrder::DayFirst => libluna_i18n::tr("Day then month"),
+            DateOrder::MonthFirst => libluna_i18n::tr("Month then day"),
+        }
+    }
+
+    pub fn next(self) -> Self {
+        match self {
+            DateOrder::DayFirst => DateOrder::MonthFirst,
+            DateOrder::MonthFirst => DateOrder::DayFirst,
+        }
+    }
+
+    pub fn key(self) -> &'static str {
+        match self {
+            DateOrder::DayFirst => "day_first",
+            DateOrder::MonthFirst => "month_first",
+        }
+    }
+
+    pub fn from_key(value: &str) -> Option<Self> {
+        match value.trim() {
+            "day_first" => Some(DateOrder::DayFirst),
+            "month_first" => Some(DateOrder::MonthFirst),
+            _ => None,
+        }
+    }
+}
+
+/// Ustawienia formatu daty (wspólne dla nagłówka, kalendarza i list).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct DateFormat {
+    pub fields: DateFields,
+    pub style: DateStyle,
+    pub order: DateOrder,
+    pub separator: DateSeparator,
+}
+
+impl DateFormat {
+    /// Data bez dnia tygodnia (np. do listy świąt).
+    pub fn date(&self, date: CivilDate) -> String {
+        match self.style {
+            DateStyle::Numeric => {
+                let day = format!("{:02}", date.day);
+                let month = format!("{:02}", date.month);
+                let sep = self.separator.ch();
+                let body = if self.order == DateOrder::MonthFirst {
+                    format!("{month}{sep}{day}")
+                } else {
+                    format!("{day}{sep}{month}")
+                };
+                if self.fields == DateFields::DayMonthYear {
+                    format!("{body}{sep}{}", date.year)
+                } else {
+                    body
+                }
+            }
+            DateStyle::Words => {
+                let month = libluna_i18n::tr(month_name_key(date.month));
+                let body = if self.order == DateOrder::MonthFirst {
+                    format!("{month} {}", date.day)
+                } else {
+                    format!("{} {month}", date.day)
+                };
+                if self.fields == DateFields::DayMonthYear {
+                    if self.order == DateOrder::MonthFirst {
+                        format!("{body}, {}", date.year)
+                    } else {
+                        format!("{body} {}", date.year)
+                    }
+                } else {
+                    body
+                }
+            }
+        }
+    }
+
+    /// Data z dniem tygodnia (nagłówek zegara, szczegóły dnia).
+    pub fn full(&self, date: CivilDate) -> String {
+        format!(
+            "{}, {}",
+            libluna_i18n::tr(weekday_name_key(date.weekday())),
+            self.date(date)
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn date_formats_follow_preferences() {
+        let date = CivilDate::from_ymd(2026, 10, 31);
+        let mut format = DateFormat::default();
+        assert_eq!(format.date(date), "31.10.2026");
+
+        format.fields = DateFields::DayMonth;
+        assert_eq!(format.date(date), "31.10");
+
+        format.style = DateStyle::Words;
+        let october = libluna_i18n::tr(month_name_key(10));
+        assert_eq!(format.date(date), format!("31 {october}"));
+
+        format.fields = DateFields::DayMonthYear;
+        format.order = DateOrder::MonthFirst;
+        assert_eq!(format.date(date), format!("{october} 31, 2026"));
+
+        format.style = DateStyle::Numeric;
+        format.separator = DateSeparator::Slash;
+        assert_eq!(format.date(date), "10/31/2026");
+        format.order = DateOrder::DayFirst;
+        assert_eq!(format.date(date), "31/10/2026");
+        format.separator = DateSeparator::Dash;
+        assert_eq!(format.date(date), "31-10-2026");
+
+        // Dzień tygodnia jest dodawany tylko w wariancie `full`.
+        assert!(format.full(date).starts_with(&libluna_i18n::tr("Saturday")));
+    }
 
     #[test]
     fn civil_roundtrips_for_known_dates() {

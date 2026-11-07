@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 
 use libluna_core::config::{config_file, parse_pairs, save_atomic};
 
-use crate::time::LocalTime;
+use crate::time::{DateFields, DateFormat, DateOrder, DateSeparator, DateStyle, LocalTime};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Prefs {
@@ -30,6 +30,8 @@ pub struct Prefs {
     pub world_clocks: Vec<String>,
     /// Domyślny czas minutnika w minutach.
     pub timer_minutes: u32,
+    /// Format daty: zakres pól, cyfry/napisy, kolejność i separator.
+    pub date_format: DateFormat,
 }
 
 impl Default for Prefs {
@@ -44,6 +46,7 @@ impl Default for Prefs {
             use_24h: true,
             world_clocks: Vec::new(),
             timer_minutes: 5,
+            date_format: DateFormat::default(),
         }
     }
 }
@@ -90,6 +93,26 @@ impl Prefs {
                 }
                 "show_seconds" => prefs.show_seconds = truthy(&value),
                 "use_24h" => prefs.use_24h = truthy(&value),
+                "date_fields" => {
+                    if let Some(fields) = DateFields::from_key(&value) {
+                        prefs.date_format.fields = fields;
+                    }
+                }
+                "date_style" => {
+                    if let Some(style) = DateStyle::from_key(&value) {
+                        prefs.date_format.style = style;
+                    }
+                }
+                "date_order" => {
+                    if let Some(order) = DateOrder::from_key(&value) {
+                        prefs.date_format.order = order;
+                    }
+                }
+                "date_separator" => {
+                    if let Some(separator) = DateSeparator::from_key(&value) {
+                        prefs.date_format.separator = separator;
+                    }
+                }
                 "timer_minutes" => {
                     if let Ok(minutes) = value.parse::<u32>() {
                         prefs.timer_minutes = minutes.clamp(1, 24 * 60);
@@ -132,6 +155,16 @@ impl Prefs {
         }
         out.push_str(&format!("show_seconds = {}\n", u8::from(self.show_seconds)));
         out.push_str(&format!("use_24h = {}\n", u8::from(self.use_24h)));
+        out.push_str(&format!(
+            "date_fields = {}\n",
+            self.date_format.fields.key()
+        ));
+        out.push_str(&format!("date_style = {}\n", self.date_format.style.key()));
+        out.push_str(&format!("date_order = {}\n", self.date_format.order.key()));
+        out.push_str(&format!(
+            "date_separator = {}\n",
+            self.date_format.separator.key()
+        ));
         out.push_str(&format!(
             "timer_minutes = {}\n",
             self.timer_minutes.clamp(1, 1440)
@@ -266,6 +299,24 @@ mod tests {
         assert_eq!(prefs.world_clocks.len(), 2);
         let reparsed = Prefs::parse(&prefs.render());
         assert_eq!(reparsed, prefs);
+    }
+
+    #[test]
+    fn parses_and_renders_date_format() {
+        let prefs = Prefs::parse(
+            "date_fields=day_month\ndate_style=words\ndate_order=month_first\ndate_separator=slash\n",
+        );
+        assert_eq!(prefs.date_format.fields, DateFields::DayMonth);
+        assert_eq!(prefs.date_format.style, DateStyle::Words);
+        assert_eq!(prefs.date_format.order, DateOrder::MonthFirst);
+        assert_eq!(prefs.date_format.separator, DateSeparator::Slash);
+
+        let reparsed = Prefs::parse(&prefs.render());
+        assert_eq!(reparsed.date_format, prefs.date_format);
+
+        // Nieznane wartości nie psują domyślnych.
+        let bad = Prefs::parse("date_style=xyz\ndate_separator=??\n");
+        assert_eq!(bad.date_format, DateFormat::default());
     }
 
     #[test]

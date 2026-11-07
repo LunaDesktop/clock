@@ -18,7 +18,7 @@ use crate::app::{
 };
 use crate::holidays;
 use crate::prefs::zone_city;
-use crate::time::{month_name_key, weekday_name_key, weekday_short_key, CivilDate};
+use crate::time::{month_name_key, weekday_short_key, CivilDate, DateFormat};
 
 // Keysyms XKB.
 const KEY_ESCAPE: u32 = 0xff1b;
@@ -199,14 +199,12 @@ fn paint_wrapped(
     y
 }
 
-fn format_date(date: CivilDate) -> String {
-    format!(
-        "{}, {:02}.{:02}.{}",
-        libluna_i18n::tr(weekday_name_key(date.weekday())),
-        date.day,
-        date.month,
-        date.year
-    )
+fn format_date(format: DateFormat, date: CivilDate, weekday: bool) -> String {
+    if weekday {
+        format.full(date)
+    } else {
+        format.date(date)
+    }
 }
 
 fn format_month(year: i32, month: u32) -> String {
@@ -354,7 +352,7 @@ fn paint_clock(app: &mut App, ctx: &mut PaintCtx, area: Rect) {
     ctx.label_center(
         local.center().x,
         local.y() + local.height() * 0.38 + size * 0.72,
-        &format_date(app.now.date),
+        &format_date(app.prefs.date_format, app.now.date, true),
         theme.typography.body.size,
         weight::NORMAL,
         theme.colors.text,
@@ -904,7 +902,7 @@ fn paint_day_details(app: &mut App, ctx: &mut PaintCtx, card: Rect) {
     ctx.label_left(
         card.x() + pad,
         card.y() + 30.0,
-        &format_date(date),
+        &format_date(app.prefs.date_format, date, true),
         theme.typography.heading.size,
         weight::BOLD,
         theme.colors.text,
@@ -1325,17 +1323,75 @@ fn paint_settings(app: &mut App, ctx: &mut PaintCtx, area: Rect) {
         theme,
     );
 
+    // Format daty — cztery niezależne wybory, każdy cyklicznie klikany.
+    caption(
+        ctx,
+        calendar.x() + pad,
+        calendar.y() + 200.0,
+        &libluna_i18n::tr("Date format"),
+        theme.colors.dim_text,
+    );
+    let date_button = (calendar.width() - pad * 2.0).min(190.0);
+    paint_choice_row(
+        app,
+        ctx,
+        calendar.x() + pad,
+        calendar.y() + 218.0,
+        calendar.width() - pad * 2.0,
+        &libluna_i18n::tr("Fields"),
+        &app.prefs.date_format.fields.label(),
+        Action::CycleDateFields,
+        date_button,
+        theme,
+    );
+    paint_choice_row(
+        app,
+        ctx,
+        calendar.x() + pad,
+        calendar.y() + 254.0,
+        calendar.width() - pad * 2.0,
+        &libluna_i18n::tr("Style"),
+        &app.prefs.date_format.style.label(),
+        Action::CycleDateStyle,
+        date_button,
+        theme,
+    );
+    paint_choice_row(
+        app,
+        ctx,
+        calendar.x() + pad,
+        calendar.y() + 290.0,
+        calendar.width() - pad * 2.0,
+        &libluna_i18n::tr("Order"),
+        &app.prefs.date_format.order.label(),
+        Action::CycleDateOrder,
+        date_button,
+        theme,
+    );
+    paint_choice_row(
+        app,
+        ctx,
+        calendar.x() + pad,
+        calendar.y() + 326.0,
+        calendar.width() - pad * 2.0,
+        &libluna_i18n::tr("Separator"),
+        app.prefs.date_format.separator.label(),
+        Action::CycleDateSeparator,
+        date_button,
+        theme,
+    );
+
     ctx.scene.fill_rect(
         Rect::from_xywh(
             calendar.x() + pad,
-            calendar.y() + 186.0,
+            calendar.y() + 368.0,
             calendar.width() - pad * 2.0,
             1.0,
         ),
         theme.colors.border,
     );
 
-    let mut upcoming_y = calendar.y() + 208.0;
+    let mut upcoming_y = calendar.y() + 390.0;
     caption(
         ctx,
         calendar.x() + pad,
@@ -1367,7 +1423,7 @@ fn paint_settings(app: &mut App, ctx: &mut PaintCtx, area: Rect) {
             theme.colors.dim_text,
         );
     } else {
-        for holiday in upcoming.iter().take(5) {
+        for holiday in upcoming.iter().take(2) {
             ctx.scene.fill_circle(
                 Point::new(calendar.x() + pad + 4.0, upcoming_y),
                 3.0,
@@ -1377,10 +1433,8 @@ fn paint_settings(app: &mut App, ctx: &mut PaintCtx, area: Rect) {
                 calendar.x() + pad + 14.0,
                 upcoming_y,
                 &format!(
-                    "{:02}.{:02}.{:04} — {}",
-                    holiday.date.day,
-                    holiday.date.month,
-                    holiday.date.year,
+                    "{} — {}",
+                    format_date(app.prefs.date_format, holiday.date, false),
                     libluna_i18n::tr(holiday.name)
                 ),
                 theme.typography.caption.size,
@@ -1479,6 +1533,32 @@ fn paint_switch_row(
     hit(app, action, switch);
 }
 
+/// Wiersz wyboru cyklicznego: etykieta po lewej, wartość na płaskim przycisku.
+fn paint_choice_row(
+    app: &mut App,
+    ctx: &mut PaintCtx,
+    x: f64,
+    y: f64,
+    width: f64,
+    label: &str,
+    value: &str,
+    action: Action,
+    button_w: f64,
+    theme: Theme,
+) {
+    ctx.label_left(
+        x,
+        y + 15.0,
+        label,
+        theme.typography.body.size,
+        weight::NORMAL,
+        theme.colors.text,
+    );
+    let button = Rect::from_xywh(x + width - button_w, y, button_w, 30.0);
+    paint_button(ctx, app, button, value, ButtonVariant::Flat);
+    hit(app, action, button);
+}
+
 // ── Modal: wydarzenie ──
 
 fn paint_modal_overlay(ctx: &mut PaintCtx, size: Size) {
@@ -1533,7 +1613,7 @@ fn paint_form(app: &mut App, ctx: &mut PaintCtx, size: Size) {
         ctx,
         card.x() + pad,
         card.y() + 54.0,
-        &format_date(form.date),
+        &format_date(app.prefs.date_format, form.date, true),
         theme.colors.dim_text,
     );
 
@@ -2251,6 +2331,22 @@ fn apply_action(app: &mut App, action: Action) {
         }
         Action::Use24h => {
             app.prefs.use_24h = !app.prefs.use_24h;
+            app.prefs.save();
+        }
+        Action::CycleDateFields => {
+            app.prefs.date_format.fields = app.prefs.date_format.fields.next();
+            app.prefs.save();
+        }
+        Action::CycleDateStyle => {
+            app.prefs.date_format.style = app.prefs.date_format.style.next();
+            app.prefs.save();
+        }
+        Action::CycleDateOrder => {
+            app.prefs.date_format.order = app.prefs.date_format.order.next();
+            app.prefs.save();
+        }
+        Action::CycleDateSeparator => {
+            app.prefs.date_format.separator = app.prefs.date_format.separator.next();
             app.prefs.save();
         }
         Action::DarkHour(delta) => {
